@@ -1,0 +1,221 @@
+
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style type="text/tailwindcss">
+  @theme {
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+    --radius-ios: 13px;
+    --radius-pill: 999px;
+  }
+  body { -webkit-font-smoothing: antialiased; }
+  .ios-card { @apply bg-white/80 rounded-[13px] overflow-hidden; border: 0.5px solid rgba(0,0,0,0.08); }
+  .dark .ios-card { @apply bg-white/10; border-color: rgba(255,255,255,0.1); }
+  .pill-on  { background: #34C759; }
+  .pill-off { background: rgba(120,120,128,0.2); }
+  .pill-text-on  { color: #fff; }
+  .pill-text-off { color: rgba(60,60,67,0.6); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+  .blink { animation: blink 1s infinite; }
+  .badge-INIT          { background:#E5E5EA; color:#3A3A3C; }
+  .badge-IDLE          { background:#007AFF22; color:#007AFF; }
+  .badge-MONITORING    { background:#34C75922; color:#248A3D; }
+  .badge-EMERGENCY     { background:#FF3B3022; color:#D70015; }
+  .badge-ERROR         { background:#FF950022; color:#C93400; }
+  .badge-SAFE_SHUTDOWN { background:#FFD60022; color:#7D5400; }
+  .fs-pill-ok     { background:rgba(120,120,128,0.12); color:rgba(60,60,67,0.5); }
+  .fs-pill-danger { background:#FF3B3022; color:#D70015; }
+</style>
+
+<div class="min-h-screen bg-[#F2F2F7] px-4 pt-5 pb-8 font-[-apple-system,BlinkMacSystemFont,'SF_Pro_Text',sans-serif]">
+
+  <div class="flex items-center justify-between mb-5">
+    <div>
+      <p class="text-[11px] font-medium text-gray-400 uppercase tracking-widest">Dashboard</p>
+      <h1 class="text-[22px] font-semibold text-gray-900 leading-tight">Aeroponik IoT</h1>
+    </div>
+    <div id="connBadge" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 border border-black/[0.06]">
+      <span id="connDot" class="w-2 h-2 rounded-full bg-gray-300 blink"></span>
+      <span id="connText" class="text-[12px] font-medium text-gray-500">Connecting</span>
+    </div>
+  </div>
+
+  <div id="errBar" class="hidden mb-3 px-4 py-3 rounded-[13px] bg-[#FF3B3022] text-[#D70015] text-[13px]"></div>
+
+  <div class="ios-card mb-3 px-4 py-3 flex items-center justify-between">
+    <div>
+      <p class="text-[11px] text-gray-400 uppercase tracking-wider mb-1">Status sistem</p>
+      <p id="stateVal" class="text-[17px] font-semibold text-gray-900">—</p>
+    </div>
+    <span id="stateBadge" class="text-[12px] font-semibold px-3 py-1 rounded-full badge-IDLE">—</span>
+  </div>
+
+  <div class="grid grid-cols-2 gap-3 mb-3">
+    <div class="ios-card px-4 py-3">
+      <p class="text-[11px] text-gray-400 uppercase tracking-wider mb-1">Suhu</p>
+      <p class="text-[26px] font-semibold text-gray-900 leading-none" id="mSuhu">—<span class="text-[14px] font-normal text-gray-400 ml-0.5">°C</span></p>
+    </div>
+    <div class="ios-card px-4 py-3">
+      <p class="text-[11px] text-gray-400 uppercase tracking-wider mb-1">Kelembaban</p>
+      <p class="text-[26px] font-semibold text-gray-900 leading-none" id="mHum">—<span class="text-[14px] font-normal text-gray-400 ml-0.5">%</span></p>
+    </div>
+    <div class="ios-card px-4 py-3">
+      <p class="text-[11px] text-gray-400 uppercase tracking-wider mb-1">TDS</p>
+      <p class="text-[26px] font-semibold text-gray-900 leading-none" id="mTDS">—<span class="text-[14px] font-normal text-gray-400 ml-0.5">ppm</span></p>
+    </div>
+    <div class="ios-card px-4 py-3">
+      <p class="text-[11px] text-gray-400 uppercase tracking-wider mb-1">Level air</p>
+      <p class="text-[26px] font-semibold text-gray-900 leading-none" id="mLevel">—<span class="text-[14px] font-normal text-gray-400 ml-0.5">%</span></p>
+    </div>
+  </div>
+
+  <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Aktuator</p>
+  <div class="ios-card mb-3 divide-y divide-black/[0.05]">
+    <div class="flex items-center justify-between px-4 py-3"><span class="text-[15px] text-gray-800">Fan</span><span id="aFan" class="pill-off pill-text-off text-[11px] font-semibold px-2.5 py-0.5 rounded-full">OFF</span></div>
+    <div class="flex items-center justify-between px-4 py-3"><span class="text-[15px] text-gray-800">Lampu UV</span><span id="aUV" class="pill-off pill-text-off text-[11px] font-semibold px-2.5 py-0.5 rounded-full">OFF</span></div>
+    <div class="flex items-center justify-between px-4 py-3"><span class="text-[15px] text-gray-800">Pompa Aeroponik</span><span id="aPAero" class="pill-off pill-text-off text-[11px] font-semibold px-2.5 py-0.5 rounded-full">OFF</span></div>
+    <div class="flex items-center justify-between px-4 py-3"><span class="text-[15px] text-gray-800">Pompa Kuras</span><span id="aPKuras" class="pill-off pill-text-off text-[11px] font-semibold px-2.5 py-0.5 rounded-full">OFF</span></div>
+    <div class="flex items-center justify-between px-4 py-3"><span class="text-[15px] text-gray-800">Pompa Nutrisi</span><span id="aPNutrisi" class="pill-off pill-text-off text-[11px] font-semibold px-2.5 py-0.5 rounded-full">OFF</span></div>
+    <div class="flex items-center justify-between px-4 py-3"><span class="text-[15px] text-gray-800">Pompa Air</span><span id="aPAir" class="pill-off pill-text-off text-[11px] font-semibold px-2.5 py-0.5 rounded-full">OFF</span></div>
+    <div class="flex items-center justify-between px-4 py-3"><span class="text-[15px] text-gray-800">Pompa Embun</span><span id="aPEmbun" class="pill-off pill-text-off text-[11px] font-semibold px-2.5 py-0.5 rounded-full">OFF</span></div>
+  </div>
+
+  <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Fail-safe</p>
+  <div class="flex gap-2 flex-wrap mb-4">
+    <span id="fsLevel" class="fs-pill-ok text-[12px] font-medium px-3 py-1 rounded-full">Level kritis</span>
+    <span id="fsSuhu" class="fs-pill-ok text-[12px] font-medium px-3 py-1 rounded-full">Suhu darurat</span>
+    <span id="fsSensorErr" class="fs-pill-ok text-[12px] font-medium px-3 py-1 rounded-full">Error sensor: 0</span>
+  </div>
+
+  <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-widest mb-2 px-1">Kontrol</p>
+  <div class="grid grid-cols-2 gap-3 mb-5">
+    <button id="btnUV" onclick="toggleUV()"
+      class="ios-card py-3.5 text-[15px] font-semibold text-[#007AFF] active:scale-[0.97] transition-transform">
+      UV Mati
+    </button>
+    <button id="btnPompa" onclick="togglePompa()"
+      class="ios-card py-3.5 text-[15px] font-semibold text-[#007AFF] active:scale-[0.97] transition-transform">
+      Pompa AK Mati
+    </button>
+  </div>
+
+  <p id="lastUpdate" class="text-center text-[12px] text-gray-400">Belum ada data</p>
+</div>
+
+<script>
+const BROKER = 'wss://broker.emqx.io:8084/mqtt';
+const TOPIC_MON = 'aeroponik/1291921/monitor';
+const TOPIC_UV = 'aeroponik/1291921/control/uv';
+const TOPIC_POMPA = 'aeroponik/1291921/control/pompa_aeroponik_kuras';
+
+let uvState = false, pompaState = false, client;
+
+function setConn(s) {
+  const dot = document.getElementById('connDot');
+  const txt = document.getElementById('connText');
+  dot.className = 'w-2 h-2 rounded-full';
+  if (s === 'online')  { dot.style.background='#34C759'; txt.textContent='Online'; txt.style.color='#248A3D'; }
+  else if (s === 'offline') { dot.style.background='#FF3B30'; dot.classList.add('blink'); txt.textContent='Offline'; txt.style.color='#D70015'; }
+  else { dot.style.background='#8E8E93'; dot.classList.add('blink'); txt.textContent='Connecting'; txt.style.color=''; }
+}
+
+function setMetric(id, val) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const unit = el.querySelector('span');
+  const uHtml = unit ? unit.outerHTML : '';
+  if (val === -1 || val === null || val === undefined) {
+    el.innerHTML = '<span style="color:#8E8E93">—</span>' + uHtml;
+  } else {
+    el.innerHTML = val + uHtml;
+  }
+}
+
+function setPill(id, on) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (on) {
+    el.className = 'pill-on pill-text-on text-[11px] font-semibold px-2.5 py-0.5 rounded-full';
+    el.textContent = 'ON';
+  } else {
+    el.className = 'pill-off pill-text-off text-[11px] font-semibold px-2.5 py-0.5 rounded-full';
+    el.textContent = 'OFF';
+  }
+}
+
+function setFS(id, active, label) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = label;
+  el.className = (active ? 'fs-pill-danger' : 'fs-pill-ok') + ' text-[12px] font-medium px-3 py-1 rounded-full';
+}
+
+function updateUI(d) {
+  const state = d.state || '—';
+  document.getElementById('stateVal').textContent = state;
+  const badge = document.getElementById('stateBadge');
+  badge.textContent = state;
+  badge.className = 'text-[12px] font-semibold px-3 py-1 rounded-full badge-' + state;
+
+  setMetric('mSuhu', d.suhu === -1 ? -1 : d.suhu);
+  setMetric('mHum', d.kelembaban === -1 ? -1 : d.kelembaban);
+  setMetric('mTDS', d.tds === -1 ? -1 : d.tds);
+  setMetric('mLevel', d.level === -1 ? -1 : d.level);
+
+  setPill('aFan', d.fan);
+  setPill('aUV', d.uv);
+  setPill('aPAero', d.pompa_aeroponik);
+  setPill('aPKuras', d.pompa_kuras);
+  setPill('aPNutrisi', d.pompa_nutrisi);
+  setPill('aPAir', d.pompa_air);
+  setPill('aPEmbun', d.pompa_embun);
+
+  setFS('fsLevel', !!d.fs_level, 'Level kritis');
+  setFS('fsSuhu', !!d.fs_suhu, 'Suhu darurat');
+  setFS('fsSensorErr', d.fs_err_sensor > 0, 'Error sensor: ' + (d.fs_err_sensor || 0));
+
+  document.getElementById('lastUpdate').textContent =
+    'Diperbarui ' + new Date().toLocaleTimeString('id-ID');
+}
+
+function showErr(msg) {
+  const el = document.getElementById('errBar');
+  el.textContent = msg; el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 3500);
+}
+
+function toggleUV() {
+  if (!client || !client.connected) { showErr('Tidak terhubung ke broker'); return; }
+  uvState = !uvState;
+  client.publish(TOPIC_UV, uvState ? '1' : '0');
+  const btn = document.getElementById('btnUV');
+  btn.textContent = uvState ? 'UV Nyala' : 'UV Mati';
+  btn.style.color = uvState ? '#34C759' : '#007AFF';
+}
+
+function togglePompa() {
+  if (!client || !client.connected) { showErr('Tidak terhubung ke broker'); return; }
+  pompaState = !pompaState;
+  client.publish(TOPIC_POMPA, pompaState ? '1' : '0');
+  const btn = document.getElementById('btnPompa');
+  btn.textContent = pompaState ? 'Pompa AK Nyala' : 'Pompa AK Mati';
+  btn.style.color = pompaState ? '#34C759' : '#007AFF';
+}
+
+function connect() {
+  setConn('connecting');
+  client = mqtt.connect(BROKER, {
+    clientId: 'ios_dash_' + Math.random().toString(16).slice(2,8),
+    clean: true, reconnectPeriod: 5000, connectTimeout: 10000
+  });
+  client.on('connect', () => { setConn('online'); client.subscribe(TOPIC_MON); });
+  client.on('reconnect', () => setConn('connecting'));
+  client.on('offline', () => setConn('offline'));
+  client.on('error', e => { setConn('offline'); showErr('MQTT: ' + e.message); });
+  client.on('message', (topic, payload) => {
+    if (topic !== TOPIC_MON) return;
+    try { updateUI(JSON.parse(payload.toString())); } catch(e) { showErr('Parse error'); }
+  });
+}
+connect();
+</script>
